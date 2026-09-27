@@ -214,25 +214,61 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
   font-size: 16px;
 }
 
-.code-input {
-  font-family: var(--mono) !important;
-  font-size: 26px !important;
-  font-weight: 600;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+.calc-card { text-align: center; }
+.calc-card h1 { text-align: left; }
+.calc-card .home-sub { text-align: left; }
+
+.code-display {
+  font-family: var(--mono);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: .1em;
   text-align: center;
-  padding: 18px 12px !important;
-  border-radius: 16px !important;
+  padding: 16px 10px;
+  margin-bottom: 4px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  color: var(--text);
+  overflow-x: auto;
+  white-space: nowrap;
 }
-.code-input::placeholder {
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+.keypad.disabled { opacity: .5; pointer-events: none; }
+
+.key {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 600;
+  padding: 16px 0;
+  border-radius: 16px;
+  cursor: pointer;
+}
+.key:active { background: var(--accent-soft); }
+.key-fn { color: var(--muted); font-family: var(--font); font-size: 16px; font-weight: 700; }
+.key-submit {
+  width: 100%;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 0;
   font-family: var(--font);
-  font-size: 18px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--muted);
-  opacity: .8;
+  font-size: 17px;
+  font-weight: 700;
+  padding: 16px 0;
+  border-radius: 16px;
+  cursor: pointer;
 }
+.key-submit:active { background: var(--accent-strong); }
+.key-submit:disabled { opacity: .55; cursor: default; }
 
 /* ---------- Admin dot ---------- */
 
@@ -1231,27 +1267,28 @@ body[data-view="chat"] .admin-dot { display: none; }
 
     <!-- ================= HOME ================= -->
     <section id="view-home" class="view home">
-      <main class="home-card">
+      <main class="home-card calc-card">
         <h1 id="app-title">Private Chat</h1>
         <p class="home-sub" id="home-sub">Enter Private Chat Code</p>
 
-        <form id="code-form" autocomplete="off" novalidate>
-          <label for="code-input" class="sr-only">Private chat code</label>
-          <input
-            id="code-input"
-            class="code-input"
-            type="text"
-            inputmode="text"
-            autocomplete="off"
-            autocapitalize="characters"
-            autocorrect="off"
-            spellcheck="false"
-            maxlength="24"
-            placeholder="Private code"
-          >
-          <p id="home-error" class="form-error" role="alert"></p>
-          <button id="open-btn" class="btn btn-primary btn-lg btn-block" type="submit">Enter Chat</button>
-        </form>
+        <div id="code-display" class="code-display" aria-live="polite">#</div>
+        <p id="home-error" class="form-error" role="alert"></p>
+
+        <div id="keypad" class="keypad">
+          <button type="button" class="key" data-key="1">1</button>
+          <button type="button" class="key" data-key="2">2</button>
+          <button type="button" class="key" data-key="3">3</button>
+          <button type="button" class="key" data-key="4">4</button>
+          <button type="button" class="key" data-key="5">5</button>
+          <button type="button" class="key" data-key="6">6</button>
+          <button type="button" class="key" data-key="7">7</button>
+          <button type="button" class="key" data-key="8">8</button>
+          <button type="button" class="key" data-key="9">9</button>
+          <button type="button" class="key key-fn" data-key="C">C</button>
+          <button type="button" class="key" data-key="0">0</button>
+          <button type="button" class="key key-fn" data-key="BACK" aria-label="Backspace">&larr;</button>
+        </div>
+        <button id="code-submit" class="key key-submit" type="button">* &nbsp; Unlock</button>
       </main>
     </section>
 
@@ -1491,9 +1528,11 @@ body[data-view="chat"] .admin-dot { display: none; }
             <h3>New chat</h3>
             <form id="create-form" class="create-row">
               <input id="create-name" type="text" maxlength="60" placeholder="Chat name (optional)" aria-label="Chat name">
+              <input id="create-code" type="text" inputmode="numeric" maxlength="24" placeholder="Custom code (optional, digits only)" aria-label="Custom code">
               <label class="max-field"><span>People</span><input id="create-max" type="number" min="2" max="10" value="2" aria-label="Max participants"></label>
               <button id="create-btn" class="btn btn-primary" type="submit">+ Create Chat</button>
             </form>
+            <p class="muted small">Leave the code blank for a random one, or type your own digits - it'll be wrapped as <span class="mono">#&hellip;*</span> automatically.</p>
             <div id="create-result" class="created hidden" role="status">
               <p class="created-title">Chat created successfully.</p>
               <div class="created-line"><span>Chat name</span><strong id="created-name"></strong></div>
@@ -1549,15 +1588,8 @@ body[data-view="chat"] .admin-dot { display: none; }
       <div class="dialog profile-dialog">
         <h3>My profile</h3>
         <div class="profile-avatar-row">
-          <button id="profile-avatar-preview" class="avatar avatar-lg" type="button" aria-label="Change profile picture">
-            <img id="profile-avatar-img" alt="" class="hidden">
-            <span id="profile-initials">?</span>
-          </button>
-          <div class="profile-avatar-actions">
-            <button id="profile-photo-btn" class="btn btn-ghost btn-sm" type="button">Choose photo</button>
-            <button id="profile-remove-photo" class="btn btn-ghost btn-sm hidden" type="button">Remove</button>
-            <input id="profile-photo-input" type="file" accept="image/*" hidden>
-          </div>
+          <div id="profile-avatar-preview" class="avatar avatar-lg"><span id="profile-initials">?</span></div>
+          <p class="muted small">Your picture is just the first letter of your name.</p>
         </div>
         <label class="field"><span>Your name</span><input id="profile-name-input" type="text" maxlength="30"></label>
         <p id="profile-error" class="form-error" role="alert"></p>
@@ -1751,26 +1783,25 @@ function uuid() {
 }
 
 // Chat codes: upper-case letters/digits only, no look-alike characters.
+// Codes now look like a phone/intercom passcode: # then digits then * (for
+// example #4829105736*). normalizeCode keeps # and * (they're part of the
+// code), just tidies case/whitespace; formatCode is for display, unchanged.
 function normalizeCode(value) {
-  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return String(value || "").toUpperCase().replace(/[^0-9#*]/g, "");
 }
 function formatCode(code) {
-  if (!code) return "";
-  if (code.length === 12) return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`;
-  if (code.length === 8) return `${code.slice(0, 4)}-${code.slice(4)}`;
-  return code;
+  return code || "";
 }
-function generateCode(length = 12) {
-  const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // 31 symbols
-  const limit = 256 - (256 % ALPHABET.length);         // avoids modulo bias
-  let out = "";
-  while (out.length < length) {
-    const bytes = crypto.getRandomValues(new Uint8Array(length));
+function generateCode(digitCount = 10) {
+  const limit = 256 - (256 % 10); // avoids modulo bias
+  let digits = "";
+  while (digits.length < digitCount) {
+    const bytes = crypto.getRandomValues(new Uint8Array(digitCount));
     for (const b of bytes) {
-      if (b < limit && out.length < length) out += ALPHABET[b % ALPHABET.length];
+      if (b < limit && digits.length < digitCount) digits += String(b % 10);
     }
   }
-  return out;
+  return `#${digits}*`;
 }
 
 function parseTs(value) {
@@ -2337,9 +2368,8 @@ function avatarColorFor(id) {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 function initialsFor(name) {
-  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-  const s = (parts[0] ? parts[0][0] : "") + (parts[1] ? parts[1][0] : "");
-  return (s || "?").toUpperCase();
+  const s = String(name || "").trim();
+  return (s ? s[0] : "?").toUpperCase();
 }
 function avatarPathFor(userId) {
   if (!state.chat) return null;
@@ -2376,40 +2406,13 @@ function openProfile() {
   if (!state.chat) return;
   els.profileNameInput.value = state.chat.displayName || "";
   els.profileError.textContent = "";
-  state.profilePendingFile = null;
-  if (state.chat.avatarPath) {
-    els.profileAvatarImg.classList.remove("hidden");
-    els.profileInitials.classList.add("hidden");
-    attachImage(els.profileAvatarImg, state.chat.avatarPath);
-    els.profileRemovePhoto.classList.remove("hidden");
-  } else {
-    els.profileAvatarImg.classList.add("hidden");
-    els.profileInitials.classList.remove("hidden");
-    els.profileInitials.textContent = initialsFor(state.chat.displayName);
-    els.profileRemovePhoto.classList.add("hidden");
-  }
+  els.profileInitials.textContent = initialsFor(state.chat.displayName);
   els.profileSheet.classList.remove("hidden");
   setTimeout(() => els.profileNameInput.focus(), 30);
 }
 
 function closeProfile() {
   els.profileSheet.classList.add("hidden");
-  state.profilePendingFile = null;
-}
-
-function onProfilePhotoChosen(file) {
-  state.profilePendingFile = file;
-  els.profileAvatarImg.src = URL.createObjectURL(file);
-  els.profileAvatarImg.classList.remove("hidden");
-  els.profileInitials.classList.add("hidden");
-  els.profileRemovePhoto.classList.remove("hidden");
-}
-
-function onProfileRemovePhoto() {
-  state.profilePendingFile = "REMOVE";
-  els.profileAvatarImg.classList.add("hidden");
-  els.profileInitials.classList.remove("hidden");
-  els.profileRemovePhoto.classList.add("hidden");
 }
 
 async function saveProfile() {
@@ -2423,21 +2426,10 @@ async function saveProfile() {
   els.profileSaveBtn.disabled = true;
   const chatId = state.chat.id;
   try {
-    let avatarArg; // undefined = leave unchanged, "" = remove, path = set
-    if (state.profilePendingFile === "REMOVE") {
-      avatarArg = "";
-    } else if (state.profilePendingFile) {
-      const img = await loadImageElement(state.profilePendingFile);
-      const scaled = await scaleImage(img, AVATAR_MAX, 0.85);
-      const path = `${chatId}/avatars/${state.user.id}-${Date.now()}.jpg`;
-      await uploadToBucket(path, scaled.blob, "image/jpeg");
-      avatarArg = path;
-    }
-    const { error } = await db.rpc("set_my_profile", { p_chat: chatId, p_display_name: name, p_avatar_path: avatarArg });
+    const { error } = await db.rpc("set_my_profile", { p_chat: chatId, p_display_name: name });
     if (error) throw error;
     if (!state.chat || state.chat.id !== chatId) return;
     state.chat.displayName = name;
-    if (avatarArg !== undefined) state.chat.avatarPath = avatarArg || null;
     storeSet(STORE.displayName, name);
     updateProfileButton();
     refreshParticipants(true);
@@ -2474,6 +2466,7 @@ const WALLPAPER_MAX = 1600;  // longest side of a saved custom wallpaper
 const photoImgs = new Map();   // message id -> <img>, reused on every re-render
 
 const state = {
+  codeDigits: "",         // digits typed on the home-screen keypad (no # or * - those are added when submitting)
   user: null,            // current Supabase auth user (anonymous guest, or admin)
   isAdmin: false,
   chat: null,            // { id, name, code, displayName }
@@ -2516,17 +2509,16 @@ const state = {
 
   suppressAutoLock: 0,       // Date.now() timestamp until which a backgrounding is NOT treated as "left the app"
 
-  profilePendingFile: null,  // File chosen in the profile sheet, or "REMOVE", or null = unchanged
 };
 
 const els = {
   app: $("#app"),
   viewHome: $("#view-home"),
   viewChat: $("#view-chat"),
-  codeForm: $("#code-form"),
-  codeInput: $("#code-input"),
+  codeDisplay: $("#code-display"),
+  keypad: $("#keypad"),
+  codeSubmit: $("#code-submit"),
   homeError: $("#home-error"),
-  openBtn: $("#open-btn"),
   appTitle: $("#app-title"),
 
   backBtn: $("#back-btn"),
@@ -2599,6 +2591,7 @@ const els = {
   adminUsageBar: $("#admin-usage-bar"),
   adminUsageText: $("#admin-usage-text"),
 
+  createCode: $("#create-code"),
   createMax: $("#create-max"),
 
   privacyShield: $("#privacy-shield"),
@@ -2608,11 +2601,7 @@ const els = {
   profileSheet: $("#profile-sheet"),
   profileClose: $("#profile-close"),
   profileAvatarPreview: $("#profile-avatar-preview"),
-  profileAvatarImg: $("#profile-avatar-img"),
   profileInitials: $("#profile-initials"),
-  profilePhotoBtn: $("#profile-photo-btn"),
-  profilePhotoInput: $("#profile-photo-input"),
-  profileRemovePhoto: $("#profile-remove-photo"),
   profileNameInput: $("#profile-name-input"),
   profileError: $("#profile-error"),
   profileSaveBtn: $("#profile-save-btn"),
@@ -2716,10 +2705,34 @@ function setHomeError(message) {
   els.homeError.textContent = message || "";
 }
 
+/* ---------- home-screen keypad (calculator-style code entry) ---------- */
+
+function renderCodeDisplay() {
+  els.codeDisplay.textContent = "#" + state.codeDigits;
+}
+
+function pressKey(key) {
+  haptic("tap");
+  setHomeError("");
+  if (key === "C") state.codeDigits = "";
+  else if (key === "BACK") state.codeDigits = state.codeDigits.slice(0, -1);
+  else if (/^[0-9]$/.test(key) && state.codeDigits.length < 24) state.codeDigits += key;
+  renderCodeDisplay();
+}
+
+function submitCode() {
+  if (!state.codeDigits) {
+    setHomeError("Enter a code first.");
+    return;
+  }
+  haptic("tap");
+  openChatByCode(`#${state.codeDigits}*`);
+}
+
 function setHomeBusy(busy) {
-  els.openBtn.disabled = busy;
-  els.codeInput.disabled = busy;
-  els.openBtn.textContent = busy ? "Opening..." : "Enter Chat";
+  els.codeSubmit.disabled = busy;
+  els.keypad.classList.toggle("disabled", busy);
+  els.codeSubmit.textContent = busy ? "Opening..." : "* \u00a0 Unlock";
 }
 
 // Generic dialog used for: asking a name, renaming, confirming a delete, device copy.
@@ -2861,8 +2874,13 @@ async function joinChat(code, name) {
 }
 
 function reportOpenError(message, fromAdmin) {
-  if (fromAdmin) toast(message, "error");
-  else setHomeError(message);
+  if (fromAdmin) {
+    toast(message, "error");
+  } else {
+    setHomeError(message);
+    state.codeDigits = ""; // like a real keypad: a wrong/expired code clears and starts over
+    renderCodeDisplay();
+  }
 }
 
 function savedName() {
@@ -3193,7 +3211,8 @@ async function goBack(opts = {}) {
   if (chatId) sendHeartbeat(chatId, "leave"); // the person pressed Back: a real, deliberate leave
   await leaveChat();
   showView("home");
-  els.codeInput.value = "";
+  state.codeDigits = "";
+  renderCodeDisplay();
   setHomeError("");
   unwindChatHistory(!!opts.fromPopstate);
   if (cameFromAdmin) openAdmin();
@@ -5145,20 +5164,49 @@ function buildChatRow(chat) {
   renameBtn.type = "button";
   renameBtn.onclick = () => renameChat(chat);
 
+  const codeBtn = el("button", "btn btn-ghost btn-sm", "Edit code");
+  codeBtn.type = "button";
+  codeBtn.onclick = () => editChatCode(chat);
+
   const deleteBtn = el("button", "btn btn-ghost btn-sm", "Delete");
   deleteBtn.type = "button";
   deleteBtn.onclick = () => deleteChat(chat);
 
-  actionsTd.append(openBtn, copyBtn, renameBtn, deleteBtn);
+  actionsTd.append(openBtn, copyBtn, renameBtn, codeBtn, deleteBtn);
   tr.append(nameTd, codeTd, countTd, peopleTd, statusTd, actionsTd);
   return tr;
 }
 
-async function createChat(name, maxMembers) {
+async function createChat(name, maxMembers, customCode) {
   const cleanName = name.trim() || "Untitled chat";
   const max = clamp(Math.round(Number(maxMembers) || 2), 2, 10);
+
+  if (customCode && customCode.trim()) {
+    const digits = customCode.replace(/[^0-9]/g, "");
+    if (digits.length < 4 || digits.length > 20) {
+      const err = new Error("Custom codes need 4 to 20 digits.");
+      err.code = "BAD_CODE";
+      throw err;
+    }
+    const code = `#${digits}*`;
+    const { data, error } = await db
+      .from("chats")
+      .insert({ code, name: cleanName, max_members: max })
+      .select("id, code, name")
+      .single();
+    if (error) {
+      if (error.code === "23505") {
+        const err = new Error("That code is already in use by another chat.");
+        err.code = "BAD_CODE";
+        throw err;
+      }
+      throw error;
+    }
+    return data;
+  }
+
   for (let attempt = 0; attempt < 5; attempt++) {
-    const code = generateCode(12);
+    const code = generateCode(10);
     const { data, error } = await db
       .from("chats")
       .insert({ code, name: cleanName, max_members: max })
@@ -5190,6 +5238,38 @@ async function renameChat(chat) {
   } catch (err) {
     console.error("Rename failed:", err);
     toast(friendlyError(err), "error");
+  }
+}
+
+async function editChatCode(chat) {
+  const currentDigits = (chat.code || "").replace(/[^0-9]/g, "");
+  const typed = await showDialog({
+    title: "Change this chat's code",
+    text: "Digits only - it will be wrapped as #\u2026* automatically. Anyone with the old code loses access the moment you save this.",
+    input: true,
+    value: currentDigits,
+    placeholder: "e.g. 4829105736",
+    maxLength: 20,
+    confirmText: "Save",
+    emptyMessage: "Please enter a code.",
+  });
+  if (!typed) return;
+  const digits = typed.replace(/[^0-9]/g, "");
+  if (digits.length < 4 || digits.length > 20) {
+    toast("Codes need 4 to 20 digits.", "error");
+    return;
+  }
+  const code = `#${digits}*`;
+  if (code === chat.code) return;
+  try {
+    const { data, error } = await db.from("chats").update({ code }).eq("id", chat.id).select("id");
+    if (error) throw error;
+    if (!data || !data.length) throw new Error("Not allowed");
+    toast("Chat code updated.");
+    loadAdminChats();
+  } catch (err) {
+    console.error("Change code failed:", err);
+    toast(err && err.code === "23505" ? "That code is already in use by another chat." : friendlyError(err), "error");
   }
 }
 
@@ -5241,11 +5321,11 @@ async function deleteChat(chat) {
    ===================================================================== */
 function bindEvents() {
   // Home: the code is typed every time
-  els.codeForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    openChatByCode(els.codeInput.value);
+  els.keypad.addEventListener("click", (e) => {
+    const btn = e.target.closest(".key");
+    if (btn) pressKey(btn.dataset.key);
   });
-  els.codeInput.addEventListener("input", () => setHomeError(""));
+  els.codeSubmit.addEventListener("click", submitCode);
 
   // Chat header
   els.backBtn.addEventListener("click", () => goBack());
@@ -5341,14 +5421,10 @@ function bindEvents() {
   els.profileBtn.addEventListener("click", openProfile);
   els.profileClose.addEventListener("click", closeProfile);
   els.profileSheet.addEventListener("click", (e) => { if (e.target === els.profileSheet) closeProfile(); });
-  els.profileAvatarPreview.addEventListener("click", () => { noteSystemUI(); els.profilePhotoInput.click(); });
-  els.profilePhotoBtn.addEventListener("click", () => { noteSystemUI(); els.profilePhotoInput.click(); });
-  els.profilePhotoInput.addEventListener("change", () => {
-    const file = els.profilePhotoInput.files && els.profilePhotoInput.files[0];
-    els.profilePhotoInput.value = "";
-    if (file) onProfilePhotoChosen(file);
+  els.profileAvatarPreview.addEventListener("click", () => els.profileNameInput.focus());
+  els.profileNameInput.addEventListener("input", () => {
+    els.profileInitials.textContent = initialsFor(els.profileNameInput.value);
   });
-  els.profileRemovePhoto.addEventListener("click", onProfileRemovePhoto);
   els.profileSaveBtn.addEventListener("click", saveProfile);
 
   // Shared chat wallpaper picture
@@ -5457,16 +5533,17 @@ function bindEvents() {
     e.preventDefault();
     els.createBtn.disabled = true;
     try {
-      const chat = await createChat(els.createName.value, els.createMax.value);
+      const chat = await createChat(els.createName.value, els.createMax.value, els.createCode.value);
       els.createdName.textContent = chat.name;
       els.createdCode.textContent = formatCode(chat.code);
       els.createResult.classList.remove("hidden");
       els.createName.value = "";
+      els.createCode.value = "";
       els.createMax.value = "2";
       loadAdminChats();
     } catch (err) {
       console.error("Create chat failed:", err);
-      toast(friendlyError(err), "error");
+      toast(err && err.code === "BAD_CODE" ? err.message : friendlyError(err), "error");
     } finally {
       els.createBtn.disabled = false;
     }
@@ -5555,12 +5632,12 @@ async function init() {
 
   if (!window.supabase || !window.supabase.createClient) {
     setHomeError("Couldn't load the chat service. Check your internet connection and reload the page.");
-    els.openBtn.disabled = true;
+    els.codeSubmit.disabled = true;
     return;
   }
   if (!isConfigured()) {
     setHomeError("This site isn't connected to a database yet. The owner needs to add the Supabase settings at the top of the script in index.html.");
-    els.openBtn.disabled = true;
+    els.codeSubmit.disabled = true;
     return;
   }
 
