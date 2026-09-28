@@ -1257,6 +1257,12 @@ body[data-view="chat"] .admin-dot { display: none; }
   border: 1px solid var(--border);
 }
 .wallpaper-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wall-last { font-weight: 600; font-size: 14px; margin: 8px 0 4px; }
+.wall-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+.wall-list li { margin: 3px 0; }
+.msg-row.system { justify-content: center; }
+.sys-line { font-size: 12px; color: var(--muted); background: var(--surface-2); padding: 4px 12px; border-radius: 999px; text-align: center; }
+.messages.has-wallpaper .sys-line { background: rgba(18, 33, 42, 0.55); color: #fff; }
 .wallpaper-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .messages { background-size: cover; background-position: center; background-repeat: no-repeat; }
@@ -1433,7 +1439,9 @@ body[data-view="chat"] .admin-dot { display: none; }
               <input id="wallpaper-input" type="file" accept="image/*" hidden>
             </div>
           </div>
-          <p class="muted small">A custom wallpaper picture replaces the background colour above (saved on this device).</p>
+          <p class="muted small">A custom wallpaper picture replaces the background colour above. Both of you see the same wallpaper.</p>
+          <div id="wall-last" class="wall-last">No changes yet.</div>
+          <ul id="wall-history-list" class="wall-list"></ul>
         </section>
 
         <section class="panel">
@@ -2280,25 +2288,127 @@ function effectiveTheme() {
   return { preset: "classic" };
 }
 
+// Wallpaper changes are shared through the chat itself: each change is saved
+// as a small special message (marked "~~wp:"), so both people get it live,
+// and the messages double as the change history (who + when). No extra
+// database setup is needed.
+const WALL_MARK = "~~wp:";
 let themeSaveTimer = null;
-function saveChatTheme(theme) {
+let themePending = false;
+let wallShownPath;
+
+function parseWall(m) {
+  const b = m && m.body;
+  if (!b || !b.startsWith(WALL_MARK)) return null;
+  const rest = b.slice(WALL_MARK.length);
+  if (rest === "img") return m.image_path ? { kind: "img", path: m.image_path } : null;
+  if (rest === "off") return { kind: "off" };
+  if (rest.startsWith("theme:")) {
+    try { return { kind: "theme", theme: JSON.parse(rest.slice(6)) }; } catch (e) { return null; }
+  }
+  return null;
+}
+function wallVerb(w) {
+  return w.kind === "img" ? "changed the chat wallpaper" : w.kind === "off" ? "removed the chat wallpaper" : "changed the chat colours";
+}
+function wallWhen(iso) { return formatDay(iso) + ", " + formatTime(iso); }
+
+function renderWallHistory() {
+  const h = state.wall.history;
+  els.wallLast.textContent = h.length ? `Last changed by ${h[0].by} \u00b7 ${wallWhen(h[0].at)}` : "No changes yet.";
+  els.wallHistoryList.replaceChildren(...h.slice(0, 6).map((x) => el("li", "", `${x.by} \u2014 ${wallVerb(x.w).replace("the chat ", "")} \u2014 ${wallWhen(x.at)}`)));
+}
+
+async function applyWallState() {
+  if (!state.chat) return;
+  const h = state.wall.history;
+  const img = h.find((x) => x.w.kind === "img" || x.w.kind === "off");
+  const th = h.find((x) => x.w.kind === "theme");
+  if (th && !themePending && th.w.theme) {
+    state.chat.theme = th.w.theme;
+    state.theme = effectiveTheme();
+    applyTheme(state.theme);
+    syncThemeUI();
+  }
+  renderWallHistory();
+  const path = img && img.w.kind === "img" ? img.w.path : null;
+  if (path === wallShownPath) return;
+  wallShownPath = path;
+  if (!path) {
+    state.chat.wallpaperPath = null;
+    applyWallpaper(null);
+    renderWallpaperUI();
+    return;
+  }
+  try {
+    const url = await getSignedUrl(path);
+    if (!state.chat || wallShownPath !== path) return;
+    state.chat.wallpaperPath = url;
+    applyWallpaper(url);
+    renderWallpaperUI();
+  } catch (err) {
+    console.warn("Could not load the chat wallpaper:", err);
+  }
+}
+
+function applyWallMessage(m) {
+  const w = parseWall(m);
+  if (!w || !state.chat || m.chat_id !== state.chat.id) return;
+  if (!state.wall.history.some((x) => x.id === m.id)) {
+    state.wall.history.push({ id: m.id, by: m.sender_name || "Someone", at: m.created_at, w });
+  }
+  state.wall.history.sort((a, b) => parseTs(b.at) - parseTs(a.at));
+  applyWallState();
+}
+
+async function loadWallState() {
   if (!state.chat) return;
   const chatId = state.chat.id;
+  try {
+    const { data, error } = await db
+      .from("messages")
+      .select("id, chat_id, sender_name, body, image_path, created_at")
+      .eq("chat_id", chatId)
+      .like("body", WALL_MARK + "%")
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    if (!state.chat || state.chat.id !== chatId) return;
+    for (const row of data) applyWallMessage(row);
+    if (!data.length) renderWallHistory();
+  } catch (err) {
+    console.warn("Could not load the wallpaper history:", err);
+  }
+}
+
+async function postWall(body, imagePath) {
+  const row = { id: uuid(), chat_id: state.chat.id, body };
+  if (imagePath) row.image_path = imagePath;
+  const { data, error } = await db.from("messages").insert(row).select(MESSAGE_COLUMNS).single();
+  if (error) throw error;
+  data.image_path = data.image_path || imagePath || null;
+  mergeMessages([data]);
+  applyWallMessage(data);
+  renderMessages();
+}
+
+function saveChatTheme(theme) {
+  if (!state.chat) return;
+  themePending = true;
   clearTimeout(themeSaveTimer);
   themeSaveTimer = setTimeout(async () => {
     try {
-      const { error } = await db.rpc("set_chat_theme", { p_chat: chatId, p_theme: theme });
-      if (error) throw error;
+      await postWall(WALL_MARK + "theme:" + JSON.stringify(theme));
     } catch (err) {
-      console.warn("Could not save the chat wallpaper colour:", err);
-      toast("Couldn't save that for the other person. Run supabase-update-3.sql to enable shared wallpapers.", "error", 5000);
+      console.warn("Could not share the colour change:", err);
+      toast("Couldn't share the colour change with the other person.", "error");
+    } finally {
+      themePending = false;
     }
-  }, 250); // small debounce so dragging a colour picker doesn't spam requests
+  }, 900); // wait a moment so dragging a colour picker doesn't spam the chat
 }
 
 /* ---------- shared custom wallpaper picture ---------- */
-
-function wallKey(chatId) { return "pc.wall." + chatId; }
 
 function applyWallpaper(dataUrl) {
   if (!dataUrl) {
@@ -2310,38 +2420,33 @@ function applyWallpaper(dataUrl) {
   els.messages.classList.add("has-wallpaper");
 }
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-    r.readAsDataURL(blob);
-  });
-}
-
 async function chooseWallpaper(file) {
   if (!state.chat) return;
+  const chatId = state.chat.id;
+  els.wallpaperChoose.disabled = true;
   try {
     const img = await loadImageElement(file);
-    const scaled = await scaleImage(img, 1280, 0.72);
-    const dataUrl = await blobToDataUrl(scaled.blob);
-    localStorage.setItem(wallKey(state.chat.id), dataUrl);
-    state.chat.wallpaperPath = dataUrl;
-    applyWallpaper(dataUrl);
-    renderWallpaperUI();
-    toast("Chat background updated.");
+    const scaled = await scaleImage(img, 1600, 0.8);
+    const path = `${chatId}/wallpaper-${Date.now()}.jpg`;
+    await uploadToBucket(path, scaled.blob, "image/jpeg");
+    await postWall(WALL_MARK + "img", path);
+    toast("Wallpaper changed for both of you.");
   } catch (err) {
     console.error("Wallpaper failed:", err);
-    toast("Couldn't set that picture. Try a smaller one.", "error");
+    toast("Couldn't set that picture. Try again or pick a smaller one.", "error");
+  } finally {
+    els.wallpaperChoose.disabled = false;
   }
 }
 
-function removeWallpaper() {
+async function removeWallpaper() {
   if (!state.chat) return;
-  try { localStorage.removeItem(wallKey(state.chat.id)); } catch (e) { /* ignore */ }
-  state.chat.wallpaperPath = null;
-  applyWallpaper(null);
-  renderWallpaperUI();
+  try {
+    await postWall(WALL_MARK + "off");
+  } catch (err) {
+    console.error("Remove wallpaper failed:", err);
+    toast("Couldn't remove the wallpaper.", "error");
+  }
 }
 
 function renderWallpaperUI() {
@@ -2464,6 +2569,7 @@ const WALLPAPER_MAX = 1600;  // longest side of a saved custom wallpaper
 const photoImgs = new Map();   // message id -> <img>, reused on every re-render
 
 const state = {
+  wall: { history: [] },
   codeDigits: "",         // digits typed on the home-screen keypad (no # or * - those are added when submitting)
   user: null,            // current Supabase auth user (anonymous guest, or admin)
   isAdmin: false,
@@ -2608,6 +2714,8 @@ const els = {
   wallpaperInput: $("#wallpaper-input"),
   wallpaperChoose: $("#wallpaper-choose"),
   wallpaperRemove: $("#wallpaper-remove"),
+  wallLast: $("#wall-last"),
+  wallHistoryList: $("#wall-history-list"),
 
   lightbox: $("#lightbox"),
   lbClose: $("#lb-close"),
@@ -3162,7 +3270,7 @@ async function enterChat(info, fromAdmin) {
     maxMembers: info.r_max_members || 2,
     avatarPath: info.r_avatar_path || null,
     theme: info.r_theme || null,
-    wallpaperPath: (() => { try { return localStorage.getItem(wallKey(info.r_id)) || null; } catch (e) { return null; } })(),
+    wallpaperPath: null,
     msgKey: null, // filled in just below, once it has been derived
   };
   state.messages = [];
@@ -3179,6 +3287,9 @@ async function enterChat(info, fromAdmin) {
   state.firstPaintDone = false;
   state.infoCodeShown = false;
   state.gallery = { open: false, items: [], ids: new Set(), hasMore: false, loading: false, loaded: false };
+  state.wall = { history: [] };
+  wallShownPath = undefined;
+  themePending = false;
   state.othersTyping = new Map();
   clearReplyTarget();
   closeMsgActions();
@@ -3209,6 +3320,7 @@ async function enterChat(info, fromAdmin) {
   startHeartbeat();
   refreshParticipants(true);
   await loadInitial();              // ... then load history (duplicates are merged by message id)
+  loadWallState();
 }
 
 async function leaveChat() {
@@ -3554,7 +3666,10 @@ async function syncLatest() {
     if (data.length) {
       mergeMessages(data);
       renderMessages();
-      for (const row of data) if (row.image_path) galleryAddNew(row);
+      for (const row of data) {
+        applyWallMessage(row);
+        if (row.image_path && !(row.body || "").startsWith(WALL_MARK)) galleryAddNew(row);
+      }
     }
   } catch (err) {
     console.error("Sync failed:", err);
@@ -3619,8 +3734,9 @@ async function onRemoteMessage(row) {
   await decryptRows([row], state.chat.msgKey);
   if (!state.chat || state.chat.id !== chatId) return;
   mergeMessages([row]);
+  applyWallMessage(row);
   renderMessages();
-  if (row.image_path) galleryAddNew(row);
+  if (row.image_path && !(row.body || "").startsWith(WALL_MARK)) galleryAddNew(row);
 }
 
 function isNearBottom() {
@@ -3707,6 +3823,15 @@ function renderMessages(opts = {}) {
     const isPhoto = !!(m.image_path || m.file);
     const isVoice = !!(m.audio_path || m.audioBlob);
     const isNew = animate && !state.renderedIds.has(m.id);
+    const wallInfo = parseWall(m);
+    if (wallInfo) {
+      const sys = el("div", "msg-row system");
+      sys.dataset.id = m.id;
+      sys.appendChild(el("div", "sys-line", `${m.sender_name || "Someone"} ${wallVerb(wallInfo)} \u00b7 ${formatTime(m.created_at)}`));
+      frag.appendChild(sys);
+      lastSender = null;
+      continue;
+    }
     const row = el("div", `msg-row ${mine ? "mine" : "theirs"}${grouped ? " grouped" : ""}${isNew ? " pop" : ""}`);
     row.dataset.id = m.id;
 
@@ -4545,7 +4670,8 @@ async function refreshMediaCount() {
       .from("messages")
       .select("id", { count: "exact", head: true })
       .eq("chat_id", chatId)
-      .not("image_path", "is", null);
+      .not("image_path", "is", null)
+      .neq("body", WALL_MARK + "img");
     if (error) throw error;
     if (!state.chat || state.chat.id !== chatId) return;
     els.infoMediaCount.textContent = count === 1 ? "1 photo" : `${count || 0} photos`;
@@ -4674,6 +4800,7 @@ async function loadGallery(reset) {
       .select(MESSAGE_COLUMNS)
       .eq("chat_id", chatId)
       .not("image_path", "is", null)
+      .neq("body", WALL_MARK + "img")
       .order("created_at", { ascending: false })
       .limit(GALLERY_PAGE);
     if (!reset && g.items.length) query = query.lt("created_at", g.items[g.items.length - 1].created_at);
