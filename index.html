@@ -1354,69 +1354,110 @@ body[data-view="chat"] .admin-dot { display: none; }
 .chat.has-wall .composer textarea::placeholder { color: rgba(255, 255, 255, .78); }
 .chat.has-wall .reply-bar, .chat.has-wall .reply-bar span, .chat.has-wall .reply-bar b { color: #fff; }
 /* ---- voice & video calling ---- */
-.avatar-xl { width: 96px; height: 96px; font-size: 30px; }
+.avatar-xl {
+  width: 112px; height: 112px;
+  font-size: 34px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.3), 0 0 0 8px rgba(255,255,255,.06), 0 18px 40px rgba(0,0,0,.4);
+}
 .call-screen {
   position: absolute;
   inset: 0;
   z-index: 150;
-  background: #0b1216;
   display: flex;
   flex-direction: column;
   color: #fff;
-  animation: fadeIn .18s ease;
+  background:
+    radial-gradient(120% 90% at 15% -10%, rgba(255,255,255,.16), transparent 55%),
+    radial-gradient(130% 100% at 110% 115%, rgba(255,255,255,.10), transparent 55%),
+    linear-gradient(165deg, #2c2a63 0%, #5a2a6e 48%, #7a2f55 100%);
+  animation: overlayIn .28s cubic-bezier(.2,.8,.2,1);
 }
 .call-remote-wrap { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .call-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
-.call-avatar-wrap { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 24px; text-align: center; }
-.call-name { font-size: 22px; font-weight: 700; }
-.call-status { font-size: 15px; color: rgba(255,255,255,.75); }
+.call-avatar-wrap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 28px;
+  text-align: center;
+  background: rgba(255,255,255,.08);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 28px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.2);
+}
+.call-name { font-size: 23px; font-weight: 700; letter-spacing: -.01em; }
+.call-status {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,.88);
+  background: rgba(255,255,255,.12);
+  padding: 5px 14px;
+  border-radius: 999px;
+  min-height: 15px;
+}
 .call-duration {
   position: absolute;
   top: max(16px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
+  z-index: 2;
   font-variant-numeric: tabular-nums;
-  font-size: 15px;
-  font-weight: 600;
-  background: rgba(0,0,0,.35);
-  padding: 5px 14px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: #fff;
+  background: rgba(20,20,30,.4);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.14);
+  padding: 6px 16px;
   border-radius: 999px;
 }
 .call-local-video {
   position: absolute;
+  z-index: 2;
   right: 14px;
   bottom: 14px;
-  width: 96px;
-  height: 132px;
-  border-radius: 16px;
+  width: 100px;
+  height: 138px;
+  border-radius: 20px;
   object-fit: cover;
   background: #000;
-  border: 2px solid rgba(255,255,255,.25);
-  box-shadow: var(--shadow);
+  border: 1.5px solid rgba(255,255,255,.3);
+  box-shadow: 0 10px 30px rgba(0,0,0,.45);
 }
 .call-actions {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 22px;
-  padding: 18px 20px max(18px, env(safe-area-inset-bottom));
+  gap: 20px;
+  padding: 20px 20px max(20px, env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(0,0,0,.28), transparent);
 }
 .call-btn {
-  width: 60px; height: 60px;
+  width: 62px; height: 62px;
   border-radius: 50%;
-  border: 0;
+  border: 1px solid rgba(255,255,255,.22);
   display: grid;
   place-items: center;
   cursor: pointer;
   color: #fff;
-  transition: transform .15s cubic-bezier(.34,1.56,.64,1), background-color .15s;
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  box-shadow: 0 10px 26px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.25);
+  transition: transform .22s cubic-bezier(.34,1.56,.64,1), background-color .15s;
 }
-.call-btn:active { transform: scale(.92); }
-.call-btn-danger { background: var(--danger); }
-.call-btn-accept { background: var(--ok); }
+.call-btn:active { transform: scale(.9); }
+.call-btn-danger { background: rgba(216, 67, 45, .85); border-color: rgba(255,255,255,.3); }
+.call-btn-accept { background: rgba(30, 158, 99, .85); border-color: rgba(255,255,255,.3); }
 .call-btn-soft { background: rgba(255,255,255,.16); }
-.call-btn-soft.active { background: #fff; color: #0b1216; }
+.call-btn-soft.active { background: #fff; color: #241a3a; }
   </style>
 </head>
 <body data-view="home">
@@ -1802,6 +1843,7 @@ body[data-view="chat"] .admin-dot { display: none; }
         </div>
         <div id="call-duration" class="call-duration hidden">00:00</div>
         <video id="call-local-video" class="call-local-video hidden" autoplay playsinline muted></video>
+        <audio id="call-remote-audio" autoplay playsinline></audio>
       </div>
       <div class="call-actions">
         <button id="call-decline-btn" class="call-btn call-btn-danger hidden" type="button" aria-label="Decline">
@@ -2803,7 +2845,8 @@ const state = {
   lightbox: { items: [], index: 0, token: 0 },
 
   call: { status: "idle", type: null, callId: null, peer: null, localStream: null, remoteStream: null,
-          otherId: null, otherName: null, offer: null, pendingCandidates: [], startedAt: null, durationTimer: null },
+          otherId: null, otherName: null, offer: null, pendingCandidates: [], startedAt: null, durationTimer: null,
+          locallyPaused: false, remotePaused: false },
   appSettings: null,        // { app_name, app_tagline, default_theme } - admin branding, loaded once at start
   replyTo: null,             // { id, senderName, snippet } - message the composer is currently replying to
   actionMessageId: null,     // id of the message the long-press action sheet is open for
@@ -2833,6 +2876,7 @@ const els = {
   callScreen: $("#call-screen"),
   callRemoteVideo: $("#call-remote-video"),
   callLocalVideo: $("#call-local-video"),
+  callRemoteAudio: $("#call-remote-audio"),
   callAvatarWrap: $("#call-avatar-wrap"),
   callAvatar: $("#call-avatar"),
   callName: $("#call-name"),
@@ -3793,6 +3837,8 @@ function subscribeToChat() {
     .on("broadcast", { event: "call-cancel" }, ({ payload }) => { if (state.channel === channel) onCallCancel(payload); })
     .on("broadcast", { event: "call-decline" }, ({ payload }) => { if (state.channel === channel) onCallDecline(payload); })
     .on("broadcast", { event: "call-end" }, ({ payload }) => { if (state.channel === channel) onCallEndSignal(payload); })
+    .on("broadcast", { event: "call-pause" }, ({ payload }) => { if (state.channel === channel) onCallPause(payload); })
+    .on("broadcast", { event: "call-resume" }, ({ payload }) => { if (state.channel === channel) onCallResume(payload); })
     .subscribe((status) => {
       if (state.channel !== channel) return; // stale channel
       if (status === "SUBSCRIBED") {
@@ -4743,13 +4789,26 @@ function bindPrivacyLock() {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       if (state.chat) armPrivacyShield(); // hide the chat right away, before Chrome can take an app-switcher snapshot
+      // Backgrounding mid-call: an active call pauses (mic/camera go silent,
+      // the other person sees a "waiting" message, nothing is torn down);
+      // a call that hasn't connected yet yet is simply ended, since there is
+      // no established media to preserve.
+      if (state.call.status === "active") pauseCallForBackground();
+      else if (state.call.status === "outgoing") cancelOutgoingCall();
+      else if (state.call.status === "incoming") declineCall();
     } else if (document.visibilityState === "visible") {
       const suppressed = (state.suppressAutoLock && Date.now() < state.suppressAutoLock) || state.call.status !== "idle";
       if (state.chat && !suppressed) lockToCodeScreen();
       else disarmPrivacyShield();
+      if (state.call.status === "active") resumeCallFromBackground();
     }
   });
-  window.addEventListener("pagehide", () => { if (state.chat) armPrivacyShield(); });
+  window.addEventListener("pagehide", () => {
+    if (state.chat) armPrivacyShield();
+    // The page is actually closing/navigating away (not just backgrounding) -
+    // end the call outright rather than leave it paused forever.
+    if (state.call.status !== "idle") hangUpActiveCall();
+  });
 }
 
 /* ---------- chat deleted ---------- */
@@ -5179,7 +5238,17 @@ async function downloadCurrentPhoto() {
 // WebRTC connects the two phones directly; Google's public STUN server just
 // helps them find each other's address (no media ever passes through it).
 
-const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }];
+// STUN alone can fail to connect two phones that are both on strict mobile-
+// data networks. OpenRelay's public TURN servers (free, no account needed)
+// are added as a fallback path for exactly that case - they only relay the
+// already-encrypted media and never see it in the clear.
+const ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+];
 
 function forMe(payload) {
   const myId = state.user && state.user.id;
@@ -5222,6 +5291,7 @@ function resetCallUI() {
   els.callRemoteVideo.srcObject = null;
   els.callLocalVideo.classList.add("hidden");
   els.callLocalVideo.srcObject = null;
+  els.callRemoteAudio.srcObject = null;
   els.callAvatarWrap.classList.remove("hidden");
   els.callDuration.classList.add("hidden");
   els.callMuteBtn.classList.remove("active");
@@ -5241,7 +5311,8 @@ function endCallLocal(reasonToast) {
   stopCallMedia();
   resetCallUI();
   state.call = { status: "idle", type: null, callId: null, peer: null, localStream: null, remoteStream: null,
-                 otherId: null, otherName: null, offer: null, pendingCandidates: [], startedAt: null, durationTimer: null };
+                 otherId: null, otherName: null, offer: null, pendingCandidates: [], startedAt: null, durationTimer: null,
+                 locallyPaused: false, remotePaused: false };
   if (reasonToast) toast(reasonToast);
 }
 
@@ -5251,6 +5322,13 @@ function setupPeerConnection() {
   state.call.remoteStream = remoteStream;
   pc.ontrack = (e) => {
     remoteStream.addTrack(e.track);
+    // The remote audio always plays through its own <audio> element - this is
+    // what was missing before and is why voice calls were silent: a
+    // MediaStream never plays on its own, it has to be attached to a
+    // media element. Video calls ALSO show the same stream in the video
+    // element (so its picture+sound stay in sync); the hidden <audio> tag
+    // keeps playing underneath, which is harmless (one stream, one output).
+    els.callRemoteAudio.srcObject = remoteStream;
     if (state.call.type === "video") {
       els.callRemoteVideo.srcObject = remoteStream;
       els.callRemoteVideo.classList.remove("hidden");
@@ -5438,6 +5516,42 @@ function toggleCamera() {
   track.enabled = !track.enabled;
   els.callCamBtn.classList.toggle("active", !track.enabled);
   haptic("tap");
+}
+
+// Backgrounding the tab/app mid-call: go silent immediately rather than
+// keep sending audio/video the person can no longer see or react to, but
+// keep the connection itself alive so coming back resumes instantly - the
+// other person just sees "Waiting for ... to come back" in the meantime.
+function pauseCallForBackground() {
+  const c = state.call;
+  if (c.status !== "active" || c.locallyPaused) return;
+  c.locallyPaused = true;
+  if (c.localStream) c.localStream.getTracks().forEach((t) => { t.enabled = false; });
+  sendCallSignal("call-pause", { callId: c.callId, to: c.otherId });
+}
+
+function resumeCallFromBackground() {
+  const c = state.call;
+  if (c.status !== "active" || !c.locallyPaused) return;
+  c.locallyPaused = false;
+  if (c.localStream) {
+    const micWanted = !els.callMuteBtn.classList.contains("active"); // respect a mute the person had already set
+    const camWanted = !els.callCamBtn.classList.contains("active");
+    c.localStream.getAudioTracks().forEach((t) => { t.enabled = micWanted; });
+    c.localStream.getVideoTracks().forEach((t) => { t.enabled = camWanted; });
+  }
+  sendCallSignal("call-resume", { callId: c.callId, to: c.otherId });
+}
+
+function onCallPause(payload) {
+  if (!forMe(payload) || payload.callId !== state.call.callId || state.call.status !== "active") return;
+  state.call.remotePaused = true;
+  els.callStatus.textContent = "Waiting for " + (state.call.otherName || "the other person") + " to come back...";
+}
+function onCallResume(payload) {
+  if (!forMe(payload) || payload.callId !== state.call.callId) return;
+  state.call.remotePaused = false;
+  els.callStatus.textContent = "\u00a0";
 }
 
 /* ---------- typing indicator ("...typing" dots, like WhatsApp) ---------- */
