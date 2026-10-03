@@ -4793,20 +4793,23 @@ function bindPrivacyLock() {
       // the other person sees a "waiting" message, nothing is torn down);
       // a call that hasn't connected yet yet is simply ended, since there is
       // no established media to preserve.
+      if (state.call.status !== "idle") state.suppressAutoLock = 0; // a call's mic-permission grace window must never skip the lock
       if (state.call.status === "active") pauseCallForBackground();
       else if (state.call.status === "outgoing") cancelOutgoingCall();
       else if (state.call.status === "incoming") declineCall();
     } else if (document.visibilityState === "visible") {
-      const suppressed = (state.suppressAutoLock && Date.now() < state.suppressAutoLock) || state.call.status !== "idle";
+      // No exception for an active call: the code is required again every
+      // time the app is backgrounded, same as any other moment. The call
+      // itself was already fully closed the instant it went to the
+      // background, above - re-entering the code starts fresh.
+      const suppressed = state.suppressAutoLock && Date.now() < state.suppressAutoLock;
       if (state.chat && !suppressed) lockToCodeScreen();
       else disarmPrivacyShield();
-      if (state.call.status === "active") resumeCallFromBackground();
     }
   });
   window.addEventListener("pagehide", () => {
     if (state.chat) armPrivacyShield();
-    // The page is actually closing/navigating away (not just backgrounding) -
-    // end the call outright rather than leave it paused forever.
+    // The page is actually closing/navigating away - end the call outright.
     if (state.call.status !== "idle") hangUpActiveCall();
   });
 }
@@ -5341,7 +5344,7 @@ function setupPeerConnection() {
   pc.onconnectionstatechange = () => {
     if (state.call.peer !== pc) return; // a stale/ended call's late event
     if (pc.connectionState === "connected" && state.call.status !== "active") beginActiveCall();
-    else if (pc.connectionState === "failed") endCallLocal("Call failed - couldn't connect.");
+    else if (pc.connectionState === "failed") { if (!state.call.remotePaused) endCallLocal("Call failed - couldn't connect."); }
   };
   state.call.peer = pc;
   return pc;
@@ -5404,10 +5407,15 @@ async function startCall(type) {
 function onCallOffer(payload) {
   if (!forMe(payload)) return;
   if (state.call.status !== "idle") {
-    sendCallSignal("call-decline", { callId: payload.callId, to: payload.from, reason: "busy" });
-    return;
+    if (state.call.remotePaused && state.call.otherId === payload.from) {
+      stopCallMedia();   // clear out the old, now-dead call first...
+      resetCallUI();
+    } else {
+      sendCallSignal("call-decline", { callId: payload.callId, to: payload.from, reason: "busy" });
+      return;
+    }
   }
-  const c = state.call;
+  const c = state.call;  // ...then this proceeds exactly like any fresh incoming call
   c.status = "incoming";
   c.type = payload.callType === "video" ? "video" : "voice";
   c.callId = payload.callId;
@@ -5522,30 +5530,28 @@ function toggleCamera() {
 // keep sending audio/video the person can no longer see or react to, but
 // keep the connection itself alive so coming back resumes instantly - the
 // other person just sees "Waiting for ... to come back" in the meantime.
+// Backgrounding the app mid-call closes it immediately and completely on
+// this side - mic and camera off, connection closed - exactly like the
+// privacy lock closes the chat itself. The other person is told so they see
+// a calm "waiting" message rather than the call just silently dying; when
+// the person who left comes back, they have to re-enter the code (same as
+// always) and call again - a normal, fresh call, not a resumed one.
 function pauseCallForBackground() {
   const c = state.call;
-  if (c.status !== "active" || c.locallyPaused) return;
-  c.locallyPaused = true;
-  if (c.localStream) c.localStream.getTracks().forEach((t) => { t.enabled = false; });
+  if (c.status !== "active") return;
   sendCallSignal("call-pause", { callId: c.callId, to: c.otherId });
-}
-
-function resumeCallFromBackground() {
-  const c = state.call;
-  if (c.status !== "active" || !c.locallyPaused) return;
-  c.locallyPaused = false;
-  if (c.localStream) {
-    const micWanted = !els.callMuteBtn.classList.contains("active"); // respect a mute the person had already set
-    const camWanted = !els.callCamBtn.classList.contains("active");
-    c.localStream.getAudioTracks().forEach((t) => { t.enabled = micWanted; });
-    c.localStream.getVideoTracks().forEach((t) => { t.enabled = camWanted; });
-  }
-  sendCallSignal("call-resume", { callId: c.callId, to: c.otherId });
+  endCallLocal();
+  // A call in progress means noteSystemUI()'s mic-permission grace window
+  // may still be running - clear it so the privacy lock isn't skipped now.
+  state.suppressAutoLock = 0;
 }
 
 function onCallPause(payload) {
   if (!forMe(payload) || payload.callId !== state.call.callId || state.call.status !== "active") return;
   state.call.remotePaused = true;
+  clearInterval(state.call.durationTimer);
+  els.callDuration.classList.add("hidden");
+  setCallButtons("end"); // nothing left to mute/toggle while just waiting
   els.callStatus.textContent = "Waiting for " + (state.call.otherName || "the other person") + " to come back...";
 }
 function onCallResume(payload) {
