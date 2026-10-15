@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#0e7c86">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co; media-src 'self' data: blob: https://*.supabase.co; connect-src 'self' blob: data: https://*.supabase.co wss://*.supabase.co; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <script>if (window.top !== window.self) { document.documentElement.style.display = "none"; try { window.top.location = window.self.location; } catch (e) {} }</script>
   <title>Private Chat</title>
 
   <style>
@@ -1261,6 +1264,9 @@ body[data-view="chat"] .admin-dot { display: none; }
 .wall-list { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
 .wall-list li { margin: 3px 0; }
 .msg-row.system { justify-content: center; }
+.sys-line.missed { color: var(--danger); font-weight: 600; }
+.meta .tick { margin-left: 4px; letter-spacing: -2px; }
+.meta .tick.seen { color: #4fc3f7; font-weight: 700; }
 .sys-line { font-size: 12px; color: var(--muted); background: var(--surface-2); padding: 4px 12px; border-radius: 999px; text-align: center; }
 .messages.has-wallpaper .sys-line { background: rgba(18, 33, 42, 0.55); color: #fff; }
 .wallpaper-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -1884,7 +1890,8 @@ body[data-view="chat"] .admin-dot { display: none; }
      SUPABASE_URL      = "Project URL"            (https://xxxx.supabase.co)
      SUPABASE_ANON_KEY = "anon public" key  OR  the "publishable" key
    NEVER paste the "service_role" or "secret" key here.
-   The anon/publishable key is designed to be public; your data is
+   A publishable key can NOT be hidden in a browser app (anyone can see it
+   in DevTools). It is safe ONLY because your data is
    protected by the Row Level Security rules in supabase-setup.sql.
    ===================================================================== */
 const CONFIG = {
@@ -2545,6 +2552,67 @@ function parseWall(m) {
 }
 function wallVerb(w) {
   return w.kind === "img" ? "changed the chat wallpaper" : w.kind === "off" ? "removed the chat wallpaper" : "changed the chat colours";
+}
+const CALL_MARK = "~~call:";
+function parseCall(m) {
+  const b = m && m.body;
+  if (!b || !b.startsWith(CALL_MARK)) return null;
+  const [type, out, secs] = b.slice(CALL_MARK.length).split("|");
+  return { type: type === "video" ? "video" : "voice", out: out || "missed", secs: parseInt(secs, 10) || 0 };
+}
+function callText(i, mine) {
+  const v = i.type, icon = v === "video" ? "\ud83c\udfa5 " : "\ud83d\udcde ", cap = v === "video" ? "Video" : "Voice";
+  if (i.out === "ended") return icon + (mine ? "Outgoing " : "Incoming ") + v + " call \u00b7 " + fmtDuration(i.secs);
+  if (i.out === "declined") return icon + (mine ? cap + " call declined" : "You declined a " + v + " call");
+  if (i.out === "busy") return icon + (mine ? cap + " call - line busy" : "Missed " + v + " call");
+  if (i.out === "cancelled") return icon + (mine ? "You cancelled the " + v + " call" : "Missed " + v + " call");
+  if (i.out === "failed") return icon + cap + " call failed";
+  return icon + (mine ? cap + " call - no answer" : "Missed " + v + " call");
+}
+function logCallHistory(c, reason) {
+  try {
+    if (!c || c.status === "idle" || !c.initiator || c.logged || !state.chat) return;
+    c.logged = true;
+    let out = c.startedAt ? "ended" : (c.outcome || "missed");
+    if (!c.startedAt && !c.outcome && reason && /failed/i.test(reason)) out = "failed";
+    const secs = c.startedAt ? Math.floor((Date.now() - c.startedAt) / 1000) : 0;
+    const chatId = state.chat.id;
+    db.from("messages").insert({ id: uuid(), chat_id: chatId, body: CALL_MARK + c.type + "|" + out + "|" + secs })
+      .select(MESSAGE_COLUMNS).single().then(({ data, error }) => {
+        if (error || !data) return;
+        if (state.chat && state.chat.id === chatId) { mergeMessages([data]); renderMessages(); }
+      }).catch(() => {});
+  } catch (e) { /* call log is best-effort */ }
+}
+
+/* ---- read receipts (sent / seen) ---- */
+function peerReadAt() {
+  const id = state.chat.id;
+  if (state._prc !== id) {
+    state._prc = id; state._pr = 0;
+    try { state._pr = +localStorage.getItem("pc_read_" + id) || 0; } catch (e) { /* storage blocked */ }
+  }
+  return state._pr;
+}
+function maybeSendRead(force) {
+  if (!state.chat || !state.user || !state.channel || state.connection !== "online" || document.visibilityState !== "visible") return;
+  let latest = 0;
+  for (const m of state.messages) {
+    if (m.sender_id !== state.user.id && m.status === "sent") { const t = parseTs(m.created_at); if (t > latest) latest = t; }
+  }
+  if (!latest) return;
+  if (!force && state._sr === state.chat.id + ":" + latest) return;
+  state._sr = state.chat.id + ":" + latest;
+  try { state.channel.send({ type: "broadcast", event: "read", payload: { user_id: state.user.id, upTo: latest } }); } catch (e) { /* retried on next render */ }
+}
+function onReadBroadcast(payload) {
+  if (!state.chat || !state.user || !payload || payload.user_id === state.user.id) return;
+  const t = Number(payload.upTo) || 0;
+  if (t > peerReadAt()) {
+    state._pr = t;
+    try { localStorage.setItem("pc_read_" + state.chat.id, String(t)); } catch (e) { /* storage blocked */ }
+    renderMessages();
+  }
 }
 function wallWhen(iso) { return formatDay(iso) + ", " + formatTime(iso); }
 
@@ -3831,6 +3899,7 @@ function subscribeToChat() {
     .on("broadcast", { event: "typing" }, ({ payload }) => {
       if (state.channel === channel) onTypingBroadcast(payload);
     })
+    .on("broadcast", { event: "read" }, ({ payload }) => { if (state.channel === channel) onReadBroadcast(payload); })
     .on("broadcast", { event: "call-offer" }, ({ payload }) => { if (state.channel === channel) onCallOffer(payload); })
     .on("broadcast", { event: "call-answer" }, ({ payload }) => { if (state.channel === channel) onCallAnswer(payload); })
     .on("broadcast", { event: "call-candidate" }, ({ payload }) => { if (state.channel === channel) onCallCandidate(payload); })
@@ -3844,6 +3913,7 @@ function subscribeToChat() {
       if (status === "SUBSCRIBED") {
         setConnection("online");
         trackPresence(channel);
+        setTimeout(() => { if (state.channel === channel) maybeSendRead(true); }, 1500);
         if (state.loadState === "ok") syncLatest();       // catch up on anything missed
         else if (state.loadState === "error") loadInitial();
       } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
@@ -4095,6 +4165,15 @@ function renderMessages(opts = {}) {
     const isPhoto = !!(m.image_path || m.file);
     const isVoice = !!(m.audio_path || m.audioBlob);
     const isNew = animate && !state.renderedIds.has(m.id);
+    const callInfo = parseCall(m);
+    if (callInfo) {
+      const csys = el("div", "msg-row system");
+      csys.dataset.id = m.id;
+      csys.appendChild(el("div", "sys-line" + (!mine && callInfo.out !== "ended" ? " missed" : ""), callText(callInfo, mine) + " \u00b7 " + formatTime(m.created_at)));
+      frag.appendChild(csys);
+      lastSender = null;
+      continue;
+    }
     const wallInfo = parseWall(m);
     if (wallInfo) {
       const sys = el("div", "msg-row system");
@@ -4207,7 +4286,13 @@ function renderMessages(opts = {}) {
       metaText = "Not sent. Tap to retry";
       bubble.onclick = () => deliver(m);
     }
-    bubble.appendChild(el("div", "meta", metaText));
+    const metaEl = el("div", "meta", metaText);
+    if (mine && m.status === "sent") {
+      const seen = parseTs(m.created_at) <= peerReadAt();
+      metaEl.appendChild(el("span", "tick" + (seen ? " seen" : ""), seen ? "\u2713\u2713" : "\u2713"));
+      metaEl.title = seen ? "Seen" : "Sent";
+    }
+    bubble.appendChild(metaEl);
 
     if (m.status === "sent") {
       const entries = Object.entries(m.reactions || {}).filter(([, list]) => list && list.length);
@@ -4254,6 +4339,7 @@ function renderMessages(opts = {}) {
 
   state.renderedIds = new Set(state.messages.map((m) => m.id));
   if (state.loadState === "ok") state.firstPaintDone = true;
+  maybeSendRead();
 }
 
 /* ---------- sending text ---------- */
@@ -5310,6 +5396,7 @@ function stopCallMedia() {
 }
 
 function endCallLocal(reasonToast) {
+  logCallHistory(state.call, reasonToast);
   stopCallMedia();
   resetCallUI();
   state.call = { status: "idle", type: null, callId: null, peer: null, localStream: null, remoteStream: null,
@@ -5384,6 +5471,7 @@ async function startCall(type) {
   c.status = "outgoing";
   c.type = type;
   c.callId = uuid();
+  c.initiator = true;
   c.otherId = otherId;
   c.otherName = callNameFor(otherId);
   c.localStream = stream;
@@ -5463,6 +5551,7 @@ function declineCall() {
   endCallLocal();
 }
 function cancelOutgoingCall() {
+  if (state.call.status === "outgoing") state.call.outcome = "cancelled";
   if (state.call.status === "outgoing") sendCallSignal("call-cancel", { callId: state.call.callId, to: state.call.otherId });
   endCallLocal();
 }
@@ -5503,6 +5592,7 @@ function onCallCancel(payload) {
 }
 function onCallDecline(payload) {
   if (!forMe(payload) || payload.callId !== state.call.callId) return;
+  state.call.outcome = payload.reason === "busy" ? "busy" : "declined";
   endCallLocal(payload.reason === "busy" ? "They're on another call." : "Call declined.");
 }
 function onCallEndSignal(payload) {
@@ -5655,6 +5745,7 @@ function snippetFor(m) {
   if (m.deleted) return "This message was deleted";
   if (m.image_path || m.file) return "\ud83d\udcf7 Photo";
   if (m.audio_path || m.audioBlob) return "\ud83c\udfa4 Voice message";
+  if (m.body && m.body.startsWith(CALL_MARK)) return "\ud83d\udcde Call";
   return (m.body || "").slice(0, 80);
 }
 
@@ -6377,6 +6468,7 @@ function bindEvents() {
     if (!state.chat) return;
     if (document.visibilityState === "visible") {
       syncLatest();
+      maybeSendRead();
       sendHeartbeat(state.chat.id, "ping");
       if (state.channel && state.connection === "online") trackPresence(state.channel);
     } else {
